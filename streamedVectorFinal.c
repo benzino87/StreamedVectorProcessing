@@ -30,9 +30,8 @@
 #define MAX 64
 #define MAX_FILE_SIZE
 
+void sigHandlerGeneral(int);
 void sigFromCompliment(int);
-void sigFromIncrementer(int);
-void sigFromAdder(int);
 
 int main(int argc, char const *argv[]){
 
@@ -48,7 +47,8 @@ int main(int argc, char const *argv[]){
   size_t num;
   char *str;
   //File read pointer and file write pointer
-  FILE *fptr, *fwptr;
+  FILE *fptr;
+  FILE *fwptr;
   size_t linesize;
   char* loadBuffer;
   char* saveBuffer;
@@ -93,7 +93,7 @@ int main(int argc, char const *argv[]){
 
       /** ADDER **/
       if(child_adder == 0){
-
+	fprintf(stderr, "Adder created...\n");
         pid_t ppid = getppid();
         char *buf;
         char writeChar;
@@ -197,6 +197,7 @@ int main(int argc, char const *argv[]){
 
       }
       else{
+	fprintf(stderr, "Incrementer created...\n");
         pid_t ppid = getppid();
         int isFirstIteration = TRUE;
         int hasCarry = FALSE;
@@ -269,15 +270,20 @@ int main(int argc, char const *argv[]){
             isFirstIteration = TRUE;
             count = 0;
           }
+	  //fprintf(stderr, "Increment bit: %s\n", str);
           write(STDOUT_FILENO, str, 1);
         }
       }
     }
     else{
+      fprintf(stderr, "Complimenter created...\n");
       pid_t ppid = getppid();
-
+      //printf("Setting up pipes and processes");
+      //pause();
+      //signal(SIGINT, sigHandlerGeneral);
+      //kill(ppid, SIGUSR1);
       //Redirect input and output
-      dup2(pipeToComplimenter[READ], STDIN_FILENO);
+      //dup2(pipeToComplimenter[READ], STDIN_FILENO);
       dup2(pipeToIncrementer[WRITE], STDOUT_FILENO);
 
       //Close all unused pipes
@@ -287,45 +293,10 @@ int main(int argc, char const *argv[]){
       close(pipeToIncrementer[READ]);
       close(pipeToAdder[READ]);
       close(pipeToAdder[WRITE]);
+      
 
-
-      while((num = read (STDIN_FILENO, str, 1)) > 0){
-        if (num > MAX) {
-          perror ("pipe read error\n");
-          exit(1);
-        }
-
-        if(*str == '0'){
-          *str = '1';
-        }
-        else if(*str == '1'){
-          *str='0';
-        }
-
-        write(STDOUT_FILENO, str, 1);
-      }
-    }
-  }
-
-
-
-  /** PARENT **/
-  else{
-    //Give children time to initialize
-    sleep(1);
-    //Redirect complimenter pipe to STDOUT
-    dup2(pipeToComplimenter[WRITE], STDOUT_FILENO);
-
-    //Close all unused pipes
-    close(pipeToComplimenter[WRITE]);
-    close(pipeToComplimenter[READ]);
-    close(pipeToIncrementer[WRITE]);
-    close(pipeToIncrementer[READ]);
-    close(pipeToAdder[WRITE]);
-    close(pipeToAdder[READ]);
-
-    if((fptr = fopen(argv[1], "r")) == NULL)
-    {
+      
+    if((fptr = fopen(argv[1], "r")) == NULL){
       perror("Error opening file");
       return -1;
     }
@@ -335,19 +306,48 @@ int main(int argc, char const *argv[]){
       //Reverse the buffer to write backwards
       for(int i = sizeof(loadBuffer)-1; i >= 0; i--){
         str = &loadBuffer[i];
-        write(STDOUT_FILENO, str, 1);
-        if(i == 0){
-          write(STDOUT_FILENO, "n", 1);
+	if(*str == '0'){
+          *str = '1';
         }
+        else if(*str == '1'){
+          *str='0';
+        }	
+	write(STDOUT_FILENO, str, 1);
+	if(i == 0){
+	  write(STDOUT_FILENO, "n", 1);
+	}
+	
+	//fprintf(stderr, "Number Read: %c      Compliment: %c\n", loadBuffer[i], str[0]);
       }
     }
-    fclose(fptr);
-    free(loadBuffer);
   }
+  }
+
+
+
+  /** PARENT **/
+  else{
+    //signal(SIGUSR1, sigFromCompliment);
+    //Give children time to initialize
+    //sleep(1);
+    //Redirect complimenter pipe to STDOUT
+    //dup2(pipeToComplimenter[WRITE], STDOUT_FILENO);
+
+    //Close all unused pipes
+    close(pipeToIncrementer[WRITE]);
+    close(pipeToIncrementer[READ]);
+    close(pipeToAdder[WRITE]);
+    close(pipeToAdder[READ]);
+    
+    
+  }
+}
+void sigHandlerGeneral(int sigNum){
+  printf("Control-C received, ready to process...\n");
 }
 
 void sigFromCompliment(int sigNum){
-  printf("Compliment receieved byte\n");
+  printf("Processing Data");
 }
 void sigFromIncrementer(int sigNum){
   printf("Increment received byte\n");
