@@ -31,37 +31,40 @@
 #define MAX_FILE_SIZE
 
 void sigHandlerGeneral(int);
-void sigFromCompliment(int);
+void sigFromComplimenter(int);
+void sigFromIncrementer(int);
+void sigFromAdder(int);
 
 int main(int argc, char const *argv[]){
 
   /** PIDS for all processes **/
   pid_t child_complimenter, child_incrementer, child_adder;
   /** Pipe 1 **/
-  int pipeToComplimenter[2];
-  /** Pipe 2 **/
   int pipeToIncrementer[2];
-  /** Pipe 3 **/
+  /** Pipe 2 **/
   int pipeToAdder[2];
-
+  /** Holds return value of pipe read function for error checking **/
   size_t num;
+  /** Pointer to current character in all three processes **/
   char *str;
-  //File read pointer and file write pointer
+  /** File read pointer **/
   FILE *fptr;
+  /** File write pointer **/
   FILE *fwptr;
+  /** Line size for getLine function **/
   size_t linesize;
+  /** Character buffer from get line function **/
   char* loadBuffer;
+  /** Character buffer for write to file **/
   char* saveBuffer;
+
+  //Allocate sizes of buffers
   loadBuffer = malloc(MAX);
   saveBuffer = malloc(MAX);
   str = malloc(sizeof(char));
 
 
   //Create pipes
-  if(pipe(pipeToComplimenter) == -1){
-    printf("Complimenter pipe error");
-    exit(1);
-  }
   if(pipe(pipeToIncrementer) == -1){
     printf("Incementer pipe error");
     exit(1);
@@ -94,17 +97,22 @@ int main(int argc, char const *argv[]){
       /** ADDER **/
       if(child_adder == 0){
 	fprintf(stderr, "Adder created...\n");
-        pid_t ppid = getppid();
+	//Get PID of incrementer process
+	//pid_t ppid = getppid();
+        //signal(SIGINT, sigHandlerGeneral);
+        //pause();
+        //kill(ppid, SIGUSR1);
+	//Character buffer for file b read
         char *buf;
+	//Binary addition character to be written to new file
         char writeChar;
+	//Boolean to keep track of carry bit for addition
         int hasCarry = FALSE;
 
         //Redirect input and output
         dup2(pipeToAdder[READ], STDIN_FILENO);
 
         //Close all unused pipes
-        close(pipeToComplimenter[WRITE]);
-        close(pipeToComplimenter[READ]);
         close(pipeToIncrementer[WRITE]);
         close(pipeToIncrementer[READ]);
         close(pipeToAdder[WRITE]);
@@ -122,27 +130,26 @@ int main(int argc, char const *argv[]){
           exit(1);
         }
 
-        /**
-          *
-          * -Begin adder process by loading in file B one line at a time
-          *   and accepting bits from pipe.
-          *
-          * -Perform standard error checking and add the bits together.
-          *
-          * -Write the bits to a save buffer and save the file.
-          *
-          */
+  
+        //Begin adder process by loading in file B one line at a time
+        //and accepting bits from pipe.
+        //Perform standard error checking and add the bits together.
+        //Write the bits to a save buffer and save the file.
         while(getline(&loadBuffer, &linesize, fptr) != -1){
-
-          for(int i = sizeof(loadBuffer)-1; i >= 0; i--){
+		
+	  //Iterate through "b" file buffer
+          for(int i = strtol(argv[3], NULL, 10); i >= 0; i--){
             buf = &loadBuffer[i];
-
+		
+            //Read from pipe, check for error
             if((num = read (STDIN_FILENO, str, 1)) > 0){
               if (num > MAX) {
                 perror ("pipe read error\n");
                 exit(1);
               }
-              if(*str == 'n'){
+              
+	      //Check for new line flag from pipe
+	      if(*str == 'n'){
                 if((num = read (STDIN_FILENO, str, 1)) > 0){
                   if (num > MAX) {
                     perror ("pipe read error\n");
@@ -151,7 +158,8 @@ int main(int argc, char const *argv[]){
                 }
                 hasCarry = FALSE;
               }
-
+              
+              fprintf(stderr, "CARRY IN: %d", hasCarry);
               //Handle bit addition from pipe and load buffer
               if(*str != 'n'){
 
@@ -185,6 +193,7 @@ int main(int argc, char const *argv[]){
                   hasCarry = TRUE;
                 }
                 saveBuffer[i] = writeChar;
+		fprintf(stderr, "%c  +  %c   =   %c\n", str[0], buf[0], writeChar);
               }
             }
           }
@@ -198,8 +207,13 @@ int main(int argc, char const *argv[]){
       }
       else{
 	fprintf(stderr, "Incrementer created...\n");
-        pid_t ppid = getppid();
+        //Get PID of complimenter
+	//pid_t ppid = getppid();
+	//signal(SIGUSR1, sigFromAdder);
+        //kill(ppid, SIGUSR2);
+        //Boolean to check if right most bit of current number
         int isFirstIteration = TRUE;
+	//Boolean to track carry
         int hasCarry = FALSE;
         int count = 0;
 
@@ -208,28 +222,27 @@ int main(int argc, char const *argv[]){
         dup2(pipeToAdder[WRITE], STDOUT_FILENO);
 
         //Close all unused pipes
-        close(pipeToComplimenter[WRITE]);
-        close(pipeToComplimenter[READ]);
         close(pipeToIncrementer[WRITE]);
         close(pipeToIncrementer[READ]);
         close(pipeToAdder[WRITE]);
         close(pipeToAdder[READ]);
 
 
-
+        //Read incoming bit from pipe and check for errors
         while((num = read (STDIN_FILENO, str, 1)) > 0){
           if (num > MAX) {
             perror ("pipe read error\n");
             exit(1);
           }
-
+          
+	  //Add one and change iteration if first inverted bit is 0
           if(*str == '0' && isFirstIteration == TRUE){
             *str = '1';
             hasCarry = FALSE;
             isFirstIteration = FALSE;
           }
 
-          //Add one and set carry if first inverted bit is 0
+          //Add one and set carry if first inverted bit is 1
           else if(*str == '1' && isFirstIteration == TRUE){
             *str = '0';
             hasCarry = TRUE;
@@ -270,25 +283,23 @@ int main(int argc, char const *argv[]){
             isFirstIteration = TRUE;
             count = 0;
           }
-	  //fprintf(stderr, "Increment bit: %s\n", str);
+	  fprintf(stderr, "INCREMENT: %c\n", str[0]);
           write(STDOUT_FILENO, str, 1);
         }
       }
     }
     else{
       fprintf(stderr, "Complimenter created...\n");
-      pid_t ppid = getppid();
-      //printf("Setting up pipes and processes");
-      //pause();
-      //signal(SIGINT, sigHandlerGeneral);
+      //get PID of parent process
+      //pid_t ppid = getppid();
+
+      //signal(SIGUSR2, sigFromIncrementer);
       //kill(ppid, SIGUSR1);
-      //Redirect input and output
-      //dup2(pipeToComplimenter[READ], STDIN_FILENO);
+
+      //Redirect output
       dup2(pipeToIncrementer[WRITE], STDOUT_FILENO);
 
       //Close all unused pipes
-      close(pipeToComplimenter[WRITE]);
-      close(pipeToComplimenter[READ]);
       close(pipeToIncrementer[WRITE]);
       close(pipeToIncrementer[READ]);
       close(pipeToAdder[READ]);
@@ -296,44 +307,38 @@ int main(int argc, char const *argv[]){
       
 
       
-    if((fptr = fopen(argv[1], "r")) == NULL){
-      perror("Error opening file");
-      return -1;
-    }
+      if((fptr = fopen(argv[1], "r")) == NULL){
+        perror("Error opening file");
+        return -1;
+      }
 
-    while(getline(&loadBuffer, &linesize, fptr) != -1){
-
-      //Reverse the buffer to write backwards
-      for(int i = sizeof(loadBuffer)-1; i >= 0; i--){
-        str = &loadBuffer[i];
-	if(*str == '0'){
-          *str = '1';
-        }
-        else if(*str == '1'){
-          *str='0';
-        }	
-	write(STDOUT_FILENO, str, 1);
-	if(i == 0){
-	  write(STDOUT_FILENO, "n", 1);
-	}
-	
-	//fprintf(stderr, "Number Read: %c      Compliment: %c\n", loadBuffer[i], str[0]);
+      while(getline(&loadBuffer, &linesize, fptr) != -1){
+        //Reverse the buffer to write backwards
+        for(int i = strtol(argv[3], NULL, 10); i >= 0; i--){
+          str = &loadBuffer[i];
+	  if(*str == '0'){
+            *str = '1';
+          } 
+          else if(*str == '1'){
+            *str='0';
+          }	
+	  write(STDOUT_FILENO, str, 1);
+	  if(i == 0){
+	    write(STDOUT_FILENO, "n", 1);
+	  }
+	  fprintf(stderr, "BIT FROM FILE: %c|COMPLIMENT: %c\n", loadBuffer[i], str[0]);
+       } 
       }
     }
-  }
   }
 
 
 
   /** PARENT **/
   else{
-    //signal(SIGUSR1, sigFromCompliment);
-    //Give children time to initialize
-    //sleep(1);
-    //Redirect complimenter pipe to STDOUT
-    //dup2(pipeToComplimenter[WRITE], STDOUT_FILENO);
+    //signal(SIGUSR1, sigFromComplimenter);
 
-    //Close all unused pipes
+    //Close all pipes 
     close(pipeToIncrementer[WRITE]);
     close(pipeToIncrementer[READ]);
     close(pipeToAdder[WRITE]);
@@ -343,15 +348,14 @@ int main(int argc, char const *argv[]){
   }
 }
 void sigHandlerGeneral(int sigNum){
-  printf("Control-C received, ready to process...\n");
+  printf("Control-C received, signaling Incrementer\n");
 }
-
-void sigFromCompliment(int sigNum){
-  printf("Processing Data");
+void sigFromComplimenter(int sigNum){
+  printf("Processes ready!\n");
 }
 void sigFromIncrementer(int sigNum){
-  printf("Increment received byte\n");
+  printf("Increment ready, signaling Parent\n");
 }
 void sigFromAdder(int sigNum){
-  printf("Adder received byte\n");
+  printf("Adder ready, signaling Complimenter\n");
 }
