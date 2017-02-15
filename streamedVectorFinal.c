@@ -57,6 +57,8 @@ int main(int argc, char const *argv[]){
   char* loadBuffer;
   /** Character buffer for write to file **/
   char* saveBuffer;
+  
+  signal(SIGINT, sigHandlerGeneral);
 
   //Allocate sizes of buffers
   loadBuffer = malloc(MAX);
@@ -81,7 +83,7 @@ int main(int argc, char const *argv[]){
   }
   /** COMPLIMENTER **/
   if(child_complimenter == 0){
-
+    
     if((child_incrementer = fork()) == -1){
       perror("Complimenter fork error");
       exit(1);
@@ -93,15 +95,9 @@ int main(int argc, char const *argv[]){
         perror("Complimenter fork error");
         exit(1);
       }
-
       /** ADDER **/
       if(child_adder == 0){
 	fprintf(stderr, "Adder created...\n");
-	//Get PID of incrementer process
-	//pid_t ppid = getppid();
-        //signal(SIGINT, sigHandlerGeneral);
-        //pause();
-        //kill(ppid, SIGUSR1);
 	//Character buffer for file b read
         char *buf;
 	//Binary addition character to be written to new file
@@ -124,12 +120,15 @@ int main(int argc, char const *argv[]){
           exit(1);
         }
 
+        fprintf(stderr, "Write file waiting..\n");
+
         //Read from second file
         if((fptr = fopen(argv[2], "r")) == NULL){
           perror("Error opening read file");
           exit(1);
         }
-
+        
+        fprintf(stderr, "Read file waiting..\n");
   
         //Begin adder process by loading in file B one line at a time
         //and accepting bits from pipe.
@@ -138,7 +137,7 @@ int main(int argc, char const *argv[]){
         while(getline(&loadBuffer, &linesize, fptr) != -1){
 		
 	  //Iterate through "b" file buffer
-          for(int i = strtol(argv[3], NULL, 10); i >= 0; i--){
+          for(int i = strtol(argv[3], NULL, 10)-1; i >= 0; i--){
             buf = &loadBuffer[i];
 		
             //Read from pipe, check for error
@@ -159,7 +158,7 @@ int main(int argc, char const *argv[]){
                 hasCarry = FALSE;
               }
               
-              fprintf(stderr, "CARRY IN: %d", hasCarry);
+              fprintf(stderr, "CARRY IN: [%d] + ", hasCarry);
               //Handle bit addition from pipe and load buffer
               if(*str != 'n'){
 
@@ -192,6 +191,7 @@ int main(int argc, char const *argv[]){
                   writeChar = '1';
                   hasCarry = TRUE;
                 }
+		
                 saveBuffer[i] = writeChar;
 		fprintf(stderr, "%c  +  %c   =   %c\n", str[0], buf[0], writeChar);
               }
@@ -200,17 +200,14 @@ int main(int argc, char const *argv[]){
           fputs(saveBuffer, fwptr);
           fputc('\n', fwptr);
         }
-
+      
         fclose(fptr);
         fclose(fwptr);
 
       }
       else{
 	fprintf(stderr, "Incrementer created...\n");
-        //Get PID of complimenter
-	//pid_t ppid = getppid();
-	//signal(SIGUSR1, sigFromAdder);
-        //kill(ppid, SIGUSR2);
+ 
         //Boolean to check if right most bit of current number
         int isFirstIteration = TRUE;
 	//Boolean to track carry
@@ -289,12 +286,9 @@ int main(int argc, char const *argv[]){
       }
     }
     else{
+      
       fprintf(stderr, "Complimenter created...\n");
-      //get PID of parent process
-      //pid_t ppid = getppid();
-
-      //signal(SIGUSR2, sigFromIncrementer);
-      //kill(ppid, SIGUSR1);
+      pause();
 
       //Redirect output
       dup2(pipeToIncrementer[WRITE], STDOUT_FILENO);
@@ -314,7 +308,7 @@ int main(int argc, char const *argv[]){
 
       while(getline(&loadBuffer, &linesize, fptr) != -1){
         //Reverse the buffer to write backwards
-        for(int i = strtol(argv[3], NULL, 10); i >= 0; i--){
+        for(int i = strtol(argv[3], NULL, 10)-1; i >= 0; i--){
           str = &loadBuffer[i];
 	  if(*str == '0'){
             *str = '1';
@@ -336,9 +330,9 @@ int main(int argc, char const *argv[]){
 
   /** PARENT **/
   else{
-    //signal(SIGUSR1, sigFromComplimenter);
-
-    //Close all pipes 
+    fprintf(stderr, "Waiting for ctr+c...\n\n");
+    pause();
+    //Close all pipies
     close(pipeToIncrementer[WRITE]);
     close(pipeToIncrementer[READ]);
     close(pipeToAdder[WRITE]);
